@@ -14,25 +14,26 @@ jobs:
         with:
           node-version: '20'
 
-      # 2026年最新仕様: 自前ノード (Ocean Node) を起動
+      # 2026年仕様: ホストネットワークモードで起動し、外部接続を確実に許可
       - name: Launch Ocean Node
         run: |
           docker run -d \
             --name ocean-node \
+            --network host \
             -e 'PRIVATE_KEY=${{ secrets.OCEAN_PRIVATE_KEY }}' \
             -e 'RPCS={"137":{"rpc":"https://polygon-bor-rpc.publicnode.com"}}' \
             -e 'DB_TYPE=sqlite' \
-            -p 8000:8000 \
+            -e 'HTTP_API_PORT=8000' \
             oceanprotocol/ocean-node:latest
           
-          echo "Waiting for Ocean Node to be ready..."
-          # 接続できるようになるまで最大15回(150秒)チェックする
-          for i in {1..15}; do
-            if curl -s http://localhost:8000 > /dev/null; then
-              echo "Ocean Node is UP and Running!"
+          echo "Waiting for Ocean Node to start on localhost:8000..."
+          # 接続確認ループ
+          for i in {1..20}; do
+            if curl -s http://127.0.0.1:8000 > /dev/null; then
+              echo "Ocean Node is online!"
               break
             fi
-            echo "Still waiting for node... ($i/15)"
+            echo "Waiting for node... ($i/20)"
             sleep 10
           done
 
@@ -43,6 +44,6 @@ jobs:
         env:
           OCEAN_PRIVATE_KEY: ${{ secrets.OCEAN_PRIVATE_KEY }}
           RPC_URL: "https://polygon-bor-rpc.publicnode.com"
-          AQUARIUS_URL: "http://localhost:8000"
-          PROVIDER_URL: "http://localhost:8000"
+          AQUARIUS_URL: "http://127.0.0.1:8000"
+          PROVIDER_URL: "http://127.0.0.1:8000"
         run: node ocean_recover_ddo.js
