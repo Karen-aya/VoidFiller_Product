@@ -15,7 +15,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '16' # Fetchが標準化される前のバージョンに固定
+          node-version: '20' # 20でOKです
           
       - name: Install dependencies
         run: npm install
