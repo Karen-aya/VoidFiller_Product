@@ -1,12 +1,4 @@
 require('dotenv').config();
-
-if (global.fetch) {
-    delete global.fetch;
-}
-
-require('dotenv').config();
-const { ethers } = require('ethers');
-
 const { ethers } = require('ethers');
 const { ProviderInstance, Nft, ConfigHelper } = require('@oceanprotocol/lib');
 const crypto = require('crypto');
