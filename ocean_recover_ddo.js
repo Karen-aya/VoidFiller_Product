@@ -1,3 +1,8 @@
+// 1. fetchの型競合エラー(AbortSignal)を回避するための修正（必ず最初に実行）
+if (global.fetch) {
+    delete global.fetch;
+}
+
 require('dotenv').config();
 const { ethers } = require('ethers');
 const { ProviderInstance, Nft, ConfigHelper } = require('@oceanprotocol/lib');
@@ -106,8 +111,8 @@ async function main() {
   const nftContract = nft.getContract(nftAddress);
   
   const fallbackGasLimit = process.env.GAS_LIMIT !== undefined && process.env.GAS_LIMIT !== '' && !isNaN(Number(process.env.GAS_LIMIT)) ? process.env.GAS_LIMIT : '3000000';
-  const fallbackMaxFee = process.env.MAX_FEE !== undefined && process.env.MAX_FEE !== '' && !isNaN(Number(process.env.MAX_FEE)) ? process.env.MAX_FEE : '200000000000'; // 200 Gwei
-  const fallbackPrioFee = process.env.PRIO_FEE !== undefined && process.env.PRIO_FEE !== '' && !isNaN(Number(process.env.PRIO_FEE)) ? process.env.PRIO_FEE : '60000000000';  // 60 Gwei
+  const fallbackMaxFee = process.env.MAX_FEE !== undefined && process.env.MAX_FEE !== '' && !isNaN(Number(process.env.MAX_FEE)) ? process.env.MAX_FEE : '200000000000'; 
+  const fallbackPrioFee = process.env.PRIO_FEE !== undefined && process.env.PRIO_FEE !== '' && !isNaN(Number(process.env.PRIO_FEE)) ? process.env.PRIO_FEE : '60000000000'; 
 
   const txOverrides = {
       gasLimit: ethers.BigNumber.from(fallbackGasLimit).toString(),
