@@ -19,44 +19,74 @@ jobs:
           
       - name: Install dependencies
         run: npm install
-        
-      - name: Clean up old database
-        run: rm -f ./data/ocean-node.db || true
+
+      - name: Start Typesense (Ocean Node Database)
+        run: |
+          docker run -d --name typesense \
+            --network host \
+            -e TYPESENSE_API_KEY=ocean-typesense-key \
+            typesense/typesense:26.0 \
+            --data-dir /tmp/typesense-data \
+            --api-key=ocean-typesense-key \
+            --enable-cors
+
+      - name: Wait for Typesense DB
+        run: |
+          echo "Waiting for Typesense to be ready..."
+          for i in {1..20}; do
+            if curl -s "http://localhost:8108/health" | grep -q '"ok":true'; then
+              echo "Typesense is UP!"
+              break
+            fi
+            echo "Waiting... ($i)"
+            sleep 3
+          done
 
       - name: Start Ocean Node
         env:
           PRIVATE_KEY: ${{ secrets.OCEAN_PRIVATE_KEY }}
         run: |
-          # Ensure PRIVATE_KEY starts with 0x and is properly quoted
           FORMATTED_KEY="0x${PRIVATE_KEY#0x}"
           
           docker run -d --name ocean-node --network host \
-            -e DB_TYPE=sqlite \
             -e "PRIVATE_KEY=$FORMATTED_KEY" \
-            -e RPCS='{"137":{"rpc":"https://polygon-bor-rpc.publicnode.com","fallbackRPCs":["https://1rpc.io/matic"],"chainId":137,"network":"polygon","chunkSize":100}}' \
+            -e 'DB_URL=http://localhost:8108/?apiKey=ocean-typesense-key' \
+            -e 'RPCS={"137":{"rpc":"https://polygon-bor-rpc.publicnode.com","fallbackRPCs":["https://1rpc.io/matic"],"chainId":137,"network":"polygon","chunkSize":100}}' \
+            -e HTTP_API_PORT=8000 \
+            -e LOG_LEVEL=debug \
+            -e LOG_CONSOLE=true \
             oceanprotocol/ocean-node:latest
 
-      - name: Wait for Ocean Node
+      - name: Wait for Ocean Node API
         run: |
           echo "Waiting for Ocean Node API..."
-          for i in {1..30}; do
+          for i in {1..40}; do
             if curl -s http://127.0.0.1:8000/ > /dev/null; then
               echo "Ocean Node is UP!"
               break
             fi
-            echo "Waiting..."
-            sleep 3
+            echo "Waiting... ($i)"
+            sleep 5
           done
-          
+
       - name: Verify Node Health Before Script
-        run: curl -v http://127.0.0.1:8000/
-          
+        run: |
+          echo "--- Ocean Node health ---"
+          curl -v http://127.0.0.1:8000/
+          echo ""
+          echo "--- Ocean Node indexer status ---"
+          curl -s http://127.0.0.1:8000/api/aquarius/assets/status || true
+
       - name: Run Publish Script
         env:
           OCEAN_PRIVATE_KEY: ${{ secrets.OCEAN_PRIVATE_KEY }}
           RPC_URL: "https://polygon-bor-rpc.publicnode.com"
         run: node ocean_recover_ddo.js
-        
+
       - name: Dump Docker Logs on Failure
         if: failure()
-        run: docker logs ocean-node
+        run: |
+          echo "=== Ocean Node Logs ==="
+          docker logs ocean-node || true
+          echo "=== Typesense Logs ==="
+          docker logs typesense || true

@@ -97,16 +97,19 @@ async function main() {
   console.log("\n--- DDO Validation ---");
   console.log("POSTing DDO to local node validate endpoint...");
   try {
+    const ddoBytes = Buffer.from(JSON.stringify(ddo), 'utf8');
     const validateRes = await fetch(`${localNodeUri}/api/aquarius/assets/ddo/validate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(ddo)
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: ddoBytes
     });
     const validateBody = await validateRes.text();
     console.log(`Validate HTTP status: ${validateRes.status}`);
     console.log(`Validate response: ${validateBody}`);
     if (validateRes.status !== 200) {
-      console.warn("WARNING: DDO failed local validation. Check above response for details.");
+      console.warn("WARNING: DDO failed local validation. Inspect above response.");
+    } else {
+      console.log("DDO Validation: PASSED");
     }
   } catch(e) {
     console.warn("Could not reach local validate endpoint:", e.message);
