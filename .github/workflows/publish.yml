@@ -9,16 +9,13 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    env:
-      # Node.js 24への強制移行警告への対応
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
-      - uses: actions/checkout@v6 # v4からv6へ更新
+      - uses: actions/checkout@v4
       
       - name: Setup Node.js
-        uses: actions/setup-node@v6 # v4からv6へ更新
+        uses: actions/setup-node@v4
         with:
-          node-version: '20' # 安定している20を使用
+          node-version: '20'
           
       - name: Install dependencies
         run: npm install
@@ -26,9 +23,6 @@ jobs:
       - name: Run Publish Script
         env:
           OCEAN_PRIVATE_KEY: ${{ secrets.OCEAN_PRIVATE_KEY }}
-          # 接続エラーを回避するため、より安定した公共RPCに変更
           RPC_URL: "https://polygon-bor-rpc.publicnode.com"
-          GAS_LIMIT: "3000000"
-          MAX_FEE: "200000000000"
-          PRIO_FEE: "60000000000"
+          # ※v6コードではethersが自動で最適なガス代を計算するため、GAS_LIMIT等の指定は不要になりました
         run: node ocean_recover_ddo.js
