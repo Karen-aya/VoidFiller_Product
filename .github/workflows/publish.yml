@@ -24,7 +24,7 @@ jobs:
         env:
           PRIVATE_KEY: ${{ secrets.OCEAN_PRIVATE_KEY }}
         run: |
-          docker run -d --name ocean-node -p 8000:8000 -p 9000-9003:9000-9003 \
+          docker run -d --name ocean-node --network host \
             -e DB_TYPE=sqlite \
             -e PRIVATE_KEY=$PRIVATE_KEY \
             oceanprotocol/ocean-node:latest
@@ -41,8 +41,15 @@ jobs:
             sleep 3
           done
           
+      - name: Verify Node Health Before Script
+        run: curl -v http://127.0.0.1:8000/
+          
       - name: Run Publish Script
         env:
           OCEAN_PRIVATE_KEY: ${{ secrets.OCEAN_PRIVATE_KEY }}
           RPC_URL: "https://polygon-bor-rpc.publicnode.com"
         run: node ocean_recover_ddo.js
+        
+      - name: Dump Docker Logs on Failure
+        if: failure()
+        run: docker logs ocean-node
