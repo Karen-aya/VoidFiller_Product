@@ -5,27 +5,24 @@ const crypto = require('crypto');
 
 async function main() {
   const txHash = "0xa7d9d6c481d35a0aac4ffb431bd7219f57b7bd1a3b63dd98afe8fbb5ca514f12";
-  
-  // 1. 接続先をより安定したPublicNodeに変更
   const rpcUrl = process.env.RPC_URL || 'https://polygon-bor-rpc.publicnode.com';
   const privateKey = process.env.OCEAN_PRIVATE_KEY;
 
   if (!privateKey) {
-    throw new Error("OCEAN_PRIVATE_KEY is not defined.");
+    throw new Error("OCEAN_PRIVATE_KEY is missing.");
   }
 
-  // 2. 【重要】ネットワーク判定エラーを防ぐため、137 (Polygon) を明示的に固定
+  // Polygon (137) を明示的に指定して接続エラーを回避
   const provider = new ethers.providers.JsonRpcProvider({
       url: rpcUrl,
-      timeout: 30000 // タイムアウトを30秒に延長
+      timeout: 30000
   }, 137); 
 
   const wallet = new ethers.Wallet(privateKey, provider);
   
   console.log("Fetching receipt for TX:", txHash);
   const receipt = await provider.getTransactionReceipt(txHash);
-
-  if (!receipt) throw new Error("Receipt not found for " + txHash);
+  if (!receipt) throw new Error("Receipt not found.");
 
   let nftAddress = null;
   let datatokenAddress = null;
@@ -42,12 +39,10 @@ async function main() {
     }
   }
 
-  if(!nftAddress || !datatokenAddress) {
-      throw new Error("Could not find NFT or Datatoken address.");
-  }
+  if(!nftAddress || !datatokenAddress) throw new Error("NFT/Datatoken address not found.");
   console.log("Found NFT Address:", nftAddress);
 
-  // 3. 2026年分散型仕様: Actionsで起動したローカルノードを参照
+  // 自前ノード (Ocean Node) のエンドポイント設定
   let oceanConfig = new ConfigHelper().getConfig(137) || {}; 
   oceanConfig.network = 'polygon';
   oceanConfig.chainId = 137;
@@ -56,15 +51,17 @@ async function main() {
 
   console.log("Using Node Endpoint:", oceanConfig.providerUri);
 
+  // DIDの生成
   const nftAddrLower = nftAddress.toLowerCase();
   const didHash = crypto.createHash('sha256').update(nftAddrLower + "137").digest('hex');
   const didop = "did:op:" + didHash;
 
+  // ファイル情報の暗号化
   const fileObj = [{ type: "url", url: "https://example.com/hosted/voidfiller_v1.jsonl", method: "GET" }];
-  
   console.log("Encrypting files via local node...");
   const encryptedFiles = await ProviderInstance.encrypt(fileObj, oceanConfig.chainId, oceanConfig.providerUri, wallet);
 
+  // DDO構造の構築
   const now = new Date().toISOString().split('.')[0] + "Z";
   const ddo = {
       "@context": ["https://w3id.org/did/v1"],
@@ -103,7 +100,6 @@ async function main() {
   const nft = new Nft(wallet, oceanConfig.network, oceanConfig);
   const nftContract = nft.getContract(nftAddress);
   
-  // ガス設定
   const txOverrides = {
       gasLimit: "3000000",
       maxFeePerGas: "200000000000", 
