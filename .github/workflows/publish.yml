@@ -27,9 +27,12 @@ jobs:
         env:
           PRIVATE_KEY: ${{ secrets.OCEAN_PRIVATE_KEY }}
         run: |
+          # Ensure PRIVATE_KEY starts with 0x and is properly quoted
+          FORMATTED_KEY="0x${PRIVATE_KEY#0x}"
+          
           docker run -d --name ocean-node --network host \
             -e DB_TYPE=sqlite \
-            -e PRIVATE_KEY=$PRIVATE_KEY \
+            -e "PRIVATE_KEY=$FORMATTED_KEY" \
             -e RPCS='{"137":{"rpc":"https://polygon-bor-rpc.publicnode.com","fallbackRPCs":["https://1rpc.io/matic"],"chainId":137,"network":"polygon","chunkSize":100}}' \
             oceanprotocol/ocean-node:latest
 
