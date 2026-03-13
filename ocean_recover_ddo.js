@@ -137,5 +137,30 @@ async function main() {
   }
 
   console.log(`\nMarketURL: https://market.oceanprotocol.com/asset/${didop}`);
+  console.log("\nWaiting for P2P network synchronization (Announcement)...");
+  
+  // Poll the public marketplace Aquarius to ensure the asset is indexed
+  const publicAquariusUrl = `https://v4.aquarius.oceanprotocol.com/api/aquarius/assets/ddo/${didop}`;
+  let indexed = false;
+  const maxRetries = 30; // 5 minutes max
+  for (let i = 0; i < maxRetries; i++) {
+      try {
+          // Dynamic require for node-fetch if needed, or native fetch in Node 20
+          const res = await fetch(publicAquariusUrl);
+          if (res.status === 200) {
+              console.log("SUCCESS: マーケットでの DID 検出を確認しました。");
+              indexed = true;
+              break;
+          }
+      } catch (err) {
+          // Ignore fetch errors during polling
+      }
+      console.log(`Waiting for indexer... (${i + 1}/${maxRetries})`);
+      await new Promise(resolve => setTimeout(resolve, 10000));
+  }
+
+  if (!indexed) {
+      console.warn("WARNING: The asset was minted, but the indexer did not acknowledge it within 5 minutes. It may take a bit longer to appear.");
+  }
 }
 main().catch(e => { console.error(e); process.exit(1); });
