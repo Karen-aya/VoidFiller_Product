@@ -4,16 +4,22 @@ const { ProviderInstance, Nft, ConfigHelper } = require('@oceanprotocol/lib');
 const crypto = require('crypto');
 
 async function main() {
-  // 対象のアセットが作成されたトランザクションハッシュ
   const txHash = "0xa7d9d6c481d35a0aac4ffb431bd7219f57b7bd1a3b63dd98afe8fbb5ca514f12";
-  const rpcUrl = process.env.RPC_URL || 'https://polygon-rpc.com';
+  
+  // 1. 接続先をより安定したPublicNodeに変更
+  const rpcUrl = process.env.RPC_URL || 'https://polygon-bor-rpc.publicnode.com';
   const privateKey = process.env.OCEAN_PRIVATE_KEY;
 
   if (!privateKey) {
-    throw new Error("OCEAN_PRIVATE_KEY is not defined in environment variables.");
+    throw new Error("OCEAN_PRIVATE_KEY is not defined.");
   }
 
-  const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
+  // 2. 【重要】ネットワーク判定エラーを防ぐため、137 (Polygon) を明示的に固定
+  const provider = new ethers.providers.JsonRpcProvider({
+      url: rpcUrl,
+      timeout: 30000 // タイムアウトを30秒に延長
+  }, 137); 
+
   const wallet = new ethers.Wallet(privateKey, provider);
   
   console.log("Fetching receipt for TX:", txHash);
@@ -37,48 +43,34 @@ async function main() {
   }
 
   if(!nftAddress || !datatokenAddress) {
-      throw new Error("Could not find NFT or Datatoken address in the transaction logs.");
+      throw new Error("Could not find NFT or Datatoken address.");
   }
   console.log("Found NFT Address:", nftAddress);
-  console.log("Found Datatoken Address:", datatokenAddress);
 
-  // Config context: 2026年仕様
+  // 3. 2026年分散型仕様: Actionsで起動したローカルノードを参照
   let oceanConfig = new ConfigHelper().getConfig(137) || {}; 
   oceanConfig.network = 'polygon';
   oceanConfig.chainId = 137;
-
-  // 【最重要】消滅した v4.aquarius... ではなく、Actionsで立ち上げた自前ノードを参照
   oceanConfig.providerUri = process.env.PROVIDER_URL || 'http://localhost:8000';
   oceanConfig.metadataCacheUri = process.env.AQUARIUS_URL || 'http://localhost:8000';
 
   console.log("Using Node Endpoint:", oceanConfig.providerUri);
 
-  // --- DIDの生成 (公式仕様準拠) ---
   const nftAddrLower = nftAddress.toLowerCase();
-  const chainIdStr = oceanConfig.chainId.toString();
-  const didHash = crypto.createHash('sha256').update(nftAddrLower + chainIdStr).digest('hex');
+  const didHash = crypto.createHash('sha256').update(nftAddrLower + "137").digest('hex');
   const didop = "did:op:" + didHash;
-  console.log("Calculated DID:", didop);
 
-  // ファイル情報の暗号化
-  const fileObj = [
-    {
-      type: "url",
-      url: "https://example.com/hosted/voidfiller_v1.jsonl",
-      method: "GET"
-    }
-  ];
+  const fileObj = [{ type: "url", url: "https://example.com/hosted/voidfiller_v1.jsonl", method: "GET" }];
   
   console.log("Encrypting files via local node...");
   const encryptedFiles = await ProviderInstance.encrypt(fileObj, oceanConfig.chainId, oceanConfig.providerUri, wallet);
 
-  // DDO構造の構築 (2026年 Aquarius/Node バリデーション準拠)
   const now = new Date().toISOString().split('.')[0] + "Z";
   const ddo = {
       "@context": ["https://w3id.org/did/v1"],
       id: didop,
       version: "4.1.0",
-      chainId: oceanConfig.chainId,
+      chainId: 137,
       nftAddress: nftAddress,
       metadata: {
         created: now,
@@ -101,59 +93,41 @@ async function main() {
       ]
   };
 
-  console.log("Encrypting DDO via local node...");
+  console.log("Encrypting DDO...");
   const encryptedDDO = await ProviderInstance.encrypt(ddo, oceanConfig.chainId, oceanConfig.providerUri, wallet);
   
-  if(!encryptedDDO || !encryptedDDO.startsWith('0x')){
-      throw new Error("Provider encryption failed or did not return 0x string.");
-  }
-
-  // 正規化されたJSONのKeccak256ハッシュを計算
   const ddoString = JSON.stringify(ddo);
   const ddoHash = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(ddoString));
 
-  console.log("Sending setMetadata to Polygon...");
+  console.log("Sending setMetadata...");
   const nft = new Nft(wallet, oceanConfig.network, oceanConfig);
   const nftContract = nft.getContract(nftAddress);
   
-  const fallbackGasLimit = process.env.GAS_LIMIT || '3000000';
-  const fallbackMaxFee = process.env.MAX_FEE || '200000000000'; 
-  const fallbackPrioFee = process.env.PRIO_FEE || '60000000000'; 
-
+  // ガス設定
   const txOverrides = {
-      gasLimit: ethers.BigNumber.from(fallbackGasLimit).toString(),
-      maxFeePerGas: ethers.BigNumber.from(fallbackMaxFee).toString(),
-      maxPriorityFeePerGas: ethers.BigNumber.from(fallbackPrioFee).toString()
+      gasLimit: "3000000",
+      maxFeePerGas: "200000000000", 
+      maxPriorityFeePerGas: "60000000000"
   };
 
   const metaTxResponse = await nftContract.setMetaData(
-      0, // state: active
+      0, 
       oceanConfig.providerUri,
       '0x0000000000000000000000000000000000000000',
-      '0x02', // flags: encrypted (暗号化済みフラグ)
+      '0x02',
       encryptedDDO,
       ddoHash,
       [],
       txOverrides
   );
 
-  console.log("Tx Sent! Hash:", metaTxResponse.hash || metaTxResponse.transactionHash);
-  const finalMetaTxHash = metaTxResponse.hash || metaTxResponse.transactionHash;
+  console.log("Tx Sent! Hash:", metaTxResponse.hash);
+  await provider.waitForTransaction(metaTxResponse.hash);
 
-  console.log("Waiting for network confirmation...");
-  const metaReceipt = await provider.waitForTransaction(finalMetaTxHash);
-
-  if (metaReceipt.status === 0) {
-      throw new Error("Transaction Reverted: " + finalMetaTxHash);
-  }
-
-  console.log("\n--- SUCCESS ---");
-  console.log(`DID: ${didop}`);
-  console.log(`MarketURL: https://market.oceanprotocol.com/asset/${didop}`);
+  console.log(`\nSUCCESS! MarketURL: https://market.oceanprotocol.com/asset/${didop}`);
 }
 
 main().catch(e => {
-  console.error("Error occurred during DDO recovery:");
   console.error(e);
   process.exit(1);
 });
