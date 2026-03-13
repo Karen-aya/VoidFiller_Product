@@ -8,11 +8,9 @@ async function main() {
   const rpcUrl = process.env.RPC_URL || 'https://polygon-bor-rpc.publicnode.com';
   const privateKey = process.env.OCEAN_PRIVATE_KEY;
 
-  if (!privateKey) {
-    throw new Error("OCEAN_PRIVATE_KEY is missing.");
-  }
+  if (!privateKey) throw new Error("OCEAN_PRIVATE_KEY is missing.");
 
-  // Polygon (137) を明示的に指定して接続エラーを回避
+  // Polygon (137) を明示固定
   const provider = new ethers.providers.JsonRpcProvider({
       url: rpcUrl,
       timeout: 30000
@@ -39,29 +37,27 @@ async function main() {
     }
   }
 
-  if(!nftAddress || !datatokenAddress) throw new Error("NFT/Datatoken address not found.");
+  if(!nftAddress || !datatokenAddress) throw new Error("NFT/Datatoken addresses not found.");
   console.log("Found NFT Address:", nftAddress);
 
-  // 自前ノード (Ocean Node) のエンドポイント設定
+  // localhost ではなく 127.0.0.1 を使用して名前解決エラーを回避
   let oceanConfig = new ConfigHelper().getConfig(137) || {}; 
   oceanConfig.network = 'polygon';
   oceanConfig.chainId = 137;
-  oceanConfig.providerUri = process.env.PROVIDER_URL || 'http://localhost:8000';
-  oceanConfig.metadataCacheUri = process.env.AQUARIUS_URL || 'http://localhost:8000';
+  oceanConfig.providerUri = process.env.PROVIDER_URL || 'http://127.0.0.1:8000';
+  oceanConfig.metadataCacheUri = process.env.AQUARIUS_URL || 'http://127.0.0.1:8000';
 
   console.log("Using Node Endpoint:", oceanConfig.providerUri);
 
-  // DIDの生成
   const nftAddrLower = nftAddress.toLowerCase();
   const didHash = crypto.createHash('sha256').update(nftAddrLower + "137").digest('hex');
   const didop = "did:op:" + didHash;
 
-  // ファイル情報の暗号化
   const fileObj = [{ type: "url", url: "https://example.com/hosted/voidfiller_v1.jsonl", method: "GET" }];
-  console.log("Encrypting files via local node...");
+  
+  console.log("Encrypting files...");
   const encryptedFiles = await ProviderInstance.encrypt(fileObj, oceanConfig.chainId, oceanConfig.providerUri, wallet);
 
-  // DDO構造の構築
   const now = new Date().toISOString().split('.')[0] + "Z";
   const ddo = {
       "@context": ["https://w3id.org/did/v1"],
