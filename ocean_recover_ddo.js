@@ -1,6 +1,9 @@
 // 1. fetchの型競合エラー(AbortSignal)を回避するための修正（必ず最初に実行）
-if (global.fetch) {
-    delete global.fetch;
+if (typeof global.fetch !== 'undefined') {
+    const { Request, AbortController, AbortSignal } = require('node:fetch');
+    global.Request = Request;
+    global.AbortController = AbortController;
+    global.AbortSignal = AbortSignal;
 }
 
 require('dotenv').config();
