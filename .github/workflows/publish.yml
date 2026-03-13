@@ -9,6 +9,9 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # ↓ この2行を追加して警告を消します
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v4
       
@@ -24,5 +27,4 @@ jobs:
         env:
           OCEAN_PRIVATE_KEY: ${{ secrets.OCEAN_PRIVATE_KEY }}
           RPC_URL: "https://polygon-bor-rpc.publicnode.com"
-          # ※v6コードではethersが自動で最適なガス代を計算するため、GAS_LIMIT等の指定は不要になりました
         run: node ocean_recover_ddo.js
