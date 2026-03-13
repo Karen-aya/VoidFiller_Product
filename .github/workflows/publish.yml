@@ -37,7 +37,7 @@ jobs:
       - name: Run Publish Script
         env:
           OCEAN_PRIVATE_KEY: ${{ secrets.OCEAN_PRIVATE_KEY }}
-          RPC_URL: "https://polygon-rpc.com"
+          RPC_URL: "https://polygon-bor-rpc.publicnode.com"
           # 接続先を自分自身 (localhost) に設定
           AQUARIUS_URL: "http://localhost:8000"
           PROVIDER_URL: "http://localhost:8000"
