@@ -4,20 +4,21 @@ on:
   push:
     branches: [ main ]
   schedule:
-    - cron: '0 * * * *' # 1時間に1回自動実行
+    - cron: '0 * * * *'
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true # Node.js 24への強制移行に対応
+      # Node.js 20以降の標準fetchを無効化して古いライブラリとの競合を避ける
+      NODE_OPTIONS: "--no-experimental-fetch"
     steps:
-      - uses: actions/checkout@v6 # v4からv6へ更新
+      - uses: actions/checkout@v6
       
       - name: Setup Node.js
-        uses: actions/setup-node@v6 # v4からv6へ更新
+        uses: actions/setup-node@v6
         with:
-          node-version: '24' # Node.js 24を使用
+          node-version: '20' # 安定版の20を使用
           
       - name: Install dependencies
         run: npm install
@@ -25,5 +26,8 @@ jobs:
       - name: Run Publish Script
         env:
           OCEAN_PRIVATE_KEY: ${{ secrets.OCEAN_PRIVATE_KEY }}
-          RPC_URL: "https://polygon-bor-rpc.publicnode.com" # 安定性の高いRPCに変更
+          RPC_URL: "https://polygon-bor-rpc.publicnode.com"
+          GAS_LIMIT: "3000000"
+          MAX_FEE: "200000000000"
+          PRIO_FEE: "60000000000"
         run: node ocean_recover_ddo.js
