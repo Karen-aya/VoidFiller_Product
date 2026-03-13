@@ -9,16 +9,13 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    env:
-      # Node.js 20以降の標準fetchを無効化して古いライブラリとの競合を避ける
-      NODE_OPTIONS: "--no-experimental-fetch"
     steps:
       - uses: actions/checkout@v6
       
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20' # 安定版の20を使用
+          node-version: '16' # Fetchが標準化される前のバージョンに固定
           
       - name: Install dependencies
         run: npm install
