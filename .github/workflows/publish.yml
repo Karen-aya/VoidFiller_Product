@@ -1,8 +1,6 @@
 name: Ocean Asset Publish
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -16,20 +14,27 @@ jobs:
         with:
           node-version: '20'
 
-      # --- 【2026年分散型仕様】自前ノードをバックグラウンドで起動 ---
+      # 2026年最新仕様: 自前ノード (Ocean Node) を起動
       - name: Launch Ocean Node
         run: |
           docker run -d \
             --name ocean-node \
             -e 'PRIVATE_KEY=${{ secrets.OCEAN_PRIVATE_KEY }}' \
-            -e 'RPCS={"137":{"rpc":"https://polygon-rpc.com"}}' \
-            -e 'DB_TYPE=typesense' \
-            -e 'TYPESENSE_API_KEY=xyz' \
+            -e 'RPCS={"137":{"rpc":"https://polygon-bor-rpc.publicnode.com"}}' \
+            -e 'DB_TYPE=sqlite' \
             -p 8000:8000 \
             oceanprotocol/ocean-node:latest
           
-          echo "Waiting for node to initialize..."
-          sleep 30 # ノードの起動を待機
+          echo "Waiting for Ocean Node to be ready..."
+          # 接続できるようになるまで最大15回(150秒)チェックする
+          for i in {1..15}; do
+            if curl -s http://localhost:8000 > /dev/null; then
+              echo "Ocean Node is UP and Running!"
+              break
+            fi
+            echo "Still waiting for node... ($i/15)"
+            sleep 10
+          done
 
       - name: Install dependencies
         run: npm install
@@ -38,7 +43,6 @@ jobs:
         env:
           OCEAN_PRIVATE_KEY: ${{ secrets.OCEAN_PRIVATE_KEY }}
           RPC_URL: "https://polygon-bor-rpc.publicnode.com"
-          # 接続先を自分自身 (localhost) に設定
           AQUARIUS_URL: "http://localhost:8000"
           PROVIDER_URL: "http://localhost:8000"
         run: node ocean_recover_ddo.js
