@@ -3,8 +3,7 @@ name: Ocean Asset Publish
 on:
   push:
     branches: [ main ]
-  schedule:
-    - cron: '0 * * * *' # 1時間に1回自動実行
+  workflow_dispatch:
 
 jobs:
   publish:
@@ -16,12 +15,30 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+
+      # --- 【2026年分散型仕様】自前ノードをバックグラウンドで起動 ---
+      - name: Launch Ocean Node
+        run: |
+          docker run -d \
+            --name ocean-node \
+            -e 'PRIVATE_KEY=${{ secrets.OCEAN_PRIVATE_KEY }}' \
+            -e 'RPCS={"137":{"rpc":"https://polygon-rpc.com"}}' \
+            -e 'DB_TYPE=typesense' \
+            -e 'TYPESENSE_API_KEY=xyz' \
+            -p 8000:8000 \
+            oceanprotocol/ocean-node:latest
           
+          echo "Waiting for node to initialize..."
+          sleep 30 # ノードの起動を待機
+
       - name: Install dependencies
         run: npm install
         
       - name: Run Publish Script
         env:
           OCEAN_PRIVATE_KEY: ${{ secrets.OCEAN_PRIVATE_KEY }}
-          RPC_URL: "https://polygon-bor-rpc.publicnode.com"
+          RPC_URL: "https://polygon-rpc.com"
+          # 接続先を自分自身 (localhost) に設定
+          AQUARIUS_URL: "http://localhost:8000"
+          PROVIDER_URL: "http://localhost:8000"
         run: node ocean_recover_ddo.js
