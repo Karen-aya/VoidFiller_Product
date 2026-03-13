@@ -6,10 +6,6 @@ on:
   schedule:
     - cron: '0 * * * *' # 1時間に1回自動実行
 
-# ↓ ここ（一番上の階層）に書くことで、全体に適用されます
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   publish:
     runs-on: ubuntu-latest
