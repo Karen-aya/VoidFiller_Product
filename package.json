@@ -1,18 +1,12 @@
 {
   "name": "voidfiller_product",
   "version": "1.0.0",
-  "description": "VoidFiller Product Deployment",
+  "description": "VoidFiller Product Deployment (v6)",
   "main": "ocean_recover_ddo.js",
-  "scripts": {
-    "start": "node ocean_recover_ddo.js"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@oceanprotocol/lib": "3.1.0",
+    "@oceanprotocol/lib": "^6.5.2",
     "dotenv": "^17.3.1",
-    "ethers": "^5.7.2"
+    "ethers": "^6.13.2"
   }
 }
