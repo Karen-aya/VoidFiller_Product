@@ -8,7 +8,7 @@ async function main() {
   const rpcUrl = process.env.RPC_URL || 'https://polygon-bor-rpc.publicnode.com';
   const privateKey = process.env.OCEAN_PRIVATE_KEY || '0x1111111111111111111111111111111111111111111111111111111111111111';
 
-  const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
+  const provider = new ethers.providers.JsonRpcProvider(rpcUrl, 137);
   const wallet = new ethers.Wallet(privateKey, provider);
   
   console.log("Fetching receipt for TX:", txHash);
@@ -41,8 +41,8 @@ async function main() {
   let oceanConfig = new ConfigHelper().getConfig(137) || {}; 
   oceanConfig.network = 'polygon';
   oceanConfig.chainId = 137;
-  oceanConfig.providerUri = 'https://v4.provider.polygon.oceanprotocol.com';
-  oceanConfig.metadataCacheUri = 'https://v4.aquarius.oceanprotocol.com';
+  oceanConfig.providerUri = 'http://127.0.0.1:8000';
+  oceanConfig.metadataCacheUri = 'http://127.0.0.1:8000';
 
   const chainIdHex = oceanConfig.chainId.toString(16);
   const didop = "did:op:" + crypto.createHash('sha256').update(nftAddress + chainIdHex).digest('hex');

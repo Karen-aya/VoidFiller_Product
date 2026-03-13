@@ -20,8 +20,36 @@ jobs:
       - name: Install dependencies
         run: npm install
         
+<<<<<<< HEAD
+=======
+      - name: Start Ocean Node
+        env:
+          PRIVATE_KEY: ${{ secrets.OCEAN_PRIVATE_KEY }}
+        run: |
+          docker run -d --name ocean-node -p 8000:8000 -p 9000-9003:9000-9003 \
+            -e DB_TYPE=sqlite \
+            -e PRIVATE_KEY=$PRIVATE_KEY \
+            oceanprotocol/ocean-node:latest
+
+      - name: Wait for Ocean Node
+        run: |
+          echo "Waiting for Ocean Node API..."
+          for i in {1..30}; do
+            if curl -s http://127.0.0.1:8000/ > /dev/null; then
+              echo "Ocean Node is UP!"
+              break
+            fi
+            echo "Waiting..."
+            sleep 3
+          done
+          
+>>>>>>> 70add39 (fix(ocean): integrate standalone ocean node in gh actions)
       - name: Run Publish Script
         env:
           OCEAN_PRIVATE_KEY: ${{ secrets.OCEAN_PRIVATE_KEY }}
           RPC_URL: "https://polygon-bor-rpc.publicnode.com"
+<<<<<<< HEAD
         run: node ocean_recover_ddo.js
+=======
+        run: node ocean_recover_ddo.js
+>>>>>>> 70add39 (fix(ocean): integrate standalone ocean node in gh actions)
