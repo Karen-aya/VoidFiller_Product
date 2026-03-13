@@ -44,8 +44,12 @@ async function main() {
   oceanConfig.providerUri = 'https://v4.provider.polygon.oceanprotocol.com';
   oceanConfig.metadataCacheUri = 'https://v4.aquarius.oceanprotocol.com';
 
-  const chainIdHex = oceanConfig.chainId.toString(16);
-  const didop = "did:op:" + crypto.createHash('sha256').update(nftAddress + chainIdHex).digest('hex');
+  // --- 【修正：DIDの生成】公式仕様: sha256(address.toLowerCase() + chainId.toString()) ---
+  const nftAddrLower = nftAddress.toLowerCase();
+  const chainIdStr = oceanConfig.chainId.toString();
+  const didHash = crypto.createHash('sha256').update(nftAddrLower + chainIdStr).digest('hex');
+  const didop = "did:op:" + didHash;
+  console.log("Calculated DID:", didop);
 
   // Strict v4 DDO files encryption
   const fileObj = [
@@ -58,6 +62,8 @@ async function main() {
   console.log("Encrypting files payload...");
   const encryptedFiles = await ProviderInstance.encrypt(fileObj, oceanConfig.chainId, oceanConfig.providerUri, wallet);
 
+  // --- 【修正：DDO構造】必須項目の配置と日付形式 ---
+  const now = new Date().toISOString().split('.')[0] + "Z";
   const ddo = {
       "@context": ["https://w3id.org/did/v1"],
       id: didop,
@@ -65,8 +71,8 @@ async function main() {
       chainId: oceanConfig.chainId,
       nftAddress: nftAddress,
       metadata: {
-        created: new Date().toISOString().replace(/\.[0-9]{3}/, '') + "Z",
-        updated: new Date().toISOString().replace(/\.[0-9]{3}/, '') + "Z",
+        created: now,
+        updated: now,
         type: "dataset",
         name: "VoidFiller Audit Data",
         description: "EU AI Act 2026 Audit Data - VoidFiller",
@@ -75,7 +81,7 @@ async function main() {
       },
       services: [
         {
-          id: crypto.createHash('sha256').update("access"+datatokenAddress).digest('hex'),
+          id: "0", // サービスIDをシンプルに固定
           type: "access",
           files: encryptedFiles,
           datatokenAddress: datatokenAddress,
@@ -85,11 +91,6 @@ async function main() {
       ]
   };
 
-  console.log("Validating DDO Services...");
-  if (!ddo.services[0].id || !ddo.services[0].datatokenAddress) {
-      throw new Error("Validation Failed: DDO services missing id or datatokenAddress.");
-  }
-
   console.log("Encrypting DDO...");
   const encryptedDDO = await ProviderInstance.encrypt(ddo, oceanConfig.chainId, oceanConfig.providerUri, wallet);
   
@@ -98,16 +99,17 @@ async function main() {
   }
   console.log("Encryption success!");
   
+  // --- 【修正：DDOハッシュ】正規化されたJSONのKeccak256ハッシュ ---
   const ddoString = JSON.stringify(ddo);
-  const ddoHash = "0x" + crypto.createHash('sha256').update(ddoString).digest('hex');
+  const ddoHash = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(ddoString));
 
   console.log("Sending setMetadata...");
   const nft = new Nft(wallet, oceanConfig.network, oceanConfig);
   const nftContract = nft.getContract(nftAddress);
   
-  const fallbackGasLimit = process.env.GAS_LIMIT !== undefined && process.env.GAS_LIMIT !== '' && !isNaN(Number(process.env.GAS_LIMIT)) ? process.env.GAS_LIMIT : '3000000';
-  const fallbackMaxFee = process.env.MAX_FEE !== undefined && process.env.MAX_FEE !== '' && !isNaN(Number(process.env.MAX_FEE)) ? process.env.MAX_FEE : '200000000000'; // 200 Gwei
-  const fallbackPrioFee = process.env.PRIO_FEE !== undefined && process.env.PRIO_FEE !== '' && !isNaN(Number(process.env.PRIO_FEE)) ? process.env.PRIO_FEE : '60000000000';  // 60 Gwei
+  const fallbackGasLimit = process.env.GAS_LIMIT || '3000000';
+  const fallbackMaxFee = process.env.MAX_FEE || '200000000000'; 
+  const fallbackPrioFee = process.env.PRIO_FEE || '60000000000'; 
 
   const txOverrides = {
       gasLimit: ethers.BigNumber.from(fallbackGasLimit).toString(),
