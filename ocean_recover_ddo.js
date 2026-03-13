@@ -41,8 +41,13 @@ async function main() {
   let oceanConfig = new ConfigHelper().getConfig(137) || {}; 
   oceanConfig.network = 'polygon';
   oceanConfig.chainId = 137;
-  oceanConfig.providerUri = 'http://127.0.0.1:8000';
-  oceanConfig.metadataCacheUri = 'http://127.0.0.1:8000';
+  
+  // Public URI for DDO and on-chain
+  oceanConfig.providerUri = 'https://v4.provider.polygon.oceanprotocol.com';
+  oceanConfig.metadataCacheUri = 'https://v4.aquarius.oceanprotocol.com';
+  
+  // Local URI for actually performing encryption via the GitHub Actions standalone node
+  const localNodeUri = 'http://127.0.0.1:8000';
 
   const chainIdHex = oceanConfig.chainId.toString(16);
   const didop = "did:op:" + crypto.createHash('sha256').update(nftAddress + chainIdHex).digest('hex');
@@ -56,7 +61,7 @@ async function main() {
     }
   ];
   console.log("Encrypting files payload...");
-  const encryptedFiles = await ProviderInstance.encrypt(fileObj, oceanConfig.chainId, oceanConfig.providerUri, wallet);
+  const encryptedFiles = await ProviderInstance.encrypt(fileObj, oceanConfig.chainId, localNodeUri, wallet);
 
   const ddo = {
       "@context": ["https://w3id.org/did/v1"],
@@ -91,7 +96,7 @@ async function main() {
   }
 
   console.log("Encrypting DDO...");
-  const encryptedDDO = await ProviderInstance.encrypt(ddo, oceanConfig.chainId, oceanConfig.providerUri, wallet);
+  const encryptedDDO = await ProviderInstance.encrypt(ddo, oceanConfig.chainId, localNodeUri, wallet);
   
   if(!encryptedDDO || !encryptedDDO.startsWith('0x')){
       throw new Error("Provider encryption failed or did not return 0x string.");
