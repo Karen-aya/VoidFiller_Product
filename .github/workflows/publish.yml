@@ -20,6 +20,9 @@ jobs:
       - name: Install dependencies
         run: npm install
         
+      - name: Clean up old database
+        run: rm -f ./data/ocean-node.db || true
+
       - name: Start Ocean Node
         env:
           PRIVATE_KEY: ${{ secrets.OCEAN_PRIVATE_KEY }}
@@ -27,6 +30,7 @@ jobs:
           docker run -d --name ocean-node --network host \
             -e DB_TYPE=sqlite \
             -e PRIVATE_KEY=$PRIVATE_KEY \
+            -e RPCS='{"137":{"rpc":"https://polygon-bor-rpc.publicnode.com","fallbackRPCs":["https://1rpc.io/matic"],"chainId":137,"network":"polygon","chunkSize":100}}' \
             oceanprotocol/ocean-node:latest
 
       - name: Wait for Ocean Node
