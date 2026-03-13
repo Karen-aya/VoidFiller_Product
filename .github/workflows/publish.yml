@@ -1,7 +1,10 @@
 name: Ocean Asset Publish
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: '0 * * * *' # 1時間に1回自動実行して反映を試みる設定
 
 jobs:
   publish:
@@ -12,38 +15,13 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-
-      # 2026年仕様: ホストネットワークモードで起動し、外部接続を確実に許可
-      - name: Launch Ocean Node
-        run: |
-          docker run -d \
-            --name ocean-node \
-            --network host \
-            -e 'PRIVATE_KEY=${{ secrets.OCEAN_PRIVATE_KEY }}' \
-            -e 'RPCS={"137":{"rpc":"https://polygon-bor-rpc.publicnode.com"}}' \
-            -e 'DB_TYPE=sqlite' \
-            -e 'HTTP_API_PORT=8000' \
-            oceanprotocol/ocean-node:latest
+          node-version: '18'
           
-          echo "Waiting for Ocean Node to start on localhost:8000..."
-          # 接続確認ループ
-          for i in {1..20}; do
-            if curl -s http://127.0.0.1:8000 > /dev/null; then
-              echo "Ocean Node is online!"
-              break
-            fi
-            echo "Waiting for node... ($i/20)"
-            sleep 10
-          done
-
       - name: Install dependencies
         run: npm install
         
       - name: Run Publish Script
         env:
           OCEAN_PRIVATE_KEY: ${{ secrets.OCEAN_PRIVATE_KEY }}
-          RPC_URL: "https://polygon-bor-rpc.publicnode.com"
-          AQUARIUS_URL: "http://127.0.0.1:8000"
-          PROVIDER_URL: "http://127.0.0.1:8000"
+          RPC_URL: "https://polygon-rpc.com" # 必要に応じて修正
         run: node ocean_recover_ddo.js
