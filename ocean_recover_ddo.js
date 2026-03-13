@@ -3,6 +3,10 @@ const { ethers } = require('ethers');
 const { ProviderInstance, Nft, ConfigHelper } = require('@oceanprotocol/lib');
 const crypto = require('crypto');
 
+async function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function main() {
   const txHash = "0xa7d9d6c481d35a0aac4ffb431bd7219f57b7bd1a3b63dd98afe8fbb5ca514f12";
   const rpcUrl = process.env.RPC_URL || 'https://polygon-bor-rpc.publicnode.com';
@@ -37,135 +41,156 @@ async function main() {
   console.log("Found NFT Address:", nftAddress);
   console.log("Found Datatoken Address:", datatokenAddress);
 
-  // Config context
-  let oceanConfig = new ConfigHelper().getConfig(137) || {}; 
-  oceanConfig.network = 'polygon';
-  oceanConfig.chainId = 137;
-  
-  // Public URI for DDO and on-chain
-  oceanConfig.providerUri = 'https://v4.provider.polygon.oceanprotocol.com';
-  oceanConfig.metadataCacheUri = 'https://v4.aquarius.oceanprotocol.com';
-  
-  // Local URI for actually performing encryption via the GitHub Actions standalone node
-  const localNodeUri = 'http://127.0.0.1:8000';
+  // Two distinct URIs:
+  //  - localNodeUri: the ephemeral GitHub Actions node used for encryption only
+  //  - publicProviderUri: the stable, externally reachable URI stored in the DDO and contract
+  const localNodeUri   = 'http://127.0.0.1:8000';
+  const publicProviderUri = 'https://v4.provider.polygon.oceanprotocol.com';
+
+  let oceanConfig = new ConfigHelper().getConfig(137) || {};
+  oceanConfig.network  = 'polygon';
+  oceanConfig.chainId  = 137;
+  oceanConfig.providerUri       = publicProviderUri;
+  oceanConfig.metadataCacheUri  = localNodeUri; // local indexer for querying
 
   const chainIdHex = oceanConfig.chainId.toString(16);
   const didop = "did:op:" + crypto.createHash('sha256').update(nftAddress + chainIdHex).digest('hex');
+  console.log("DID:", didop);
 
-  // Strict v4 DDO files encryption
-  const fileObj = [
-    {
-      type: "url",
-      url: "https://example.com/hosted/voidfiller_v1.jsonl",
-      method: "GET"
-    }
-  ];
-  console.log("Encrypting files payload...");
+  // ---- Build file object (files encrypted against local node) ----
+  const fileObj = [{ type: "url", url: "https://example.com/hosted/voidfiller_v1.jsonl", method: "GET" }];
+  console.log("Encrypting files payload via local node...");
   const encryptedFiles = await ProviderInstance.encrypt(fileObj, oceanConfig.chainId, localNodeUri, wallet);
 
+  // ---- Build strict DDO v4.1.0 ----
+  const now = new Date().toISOString().replace(/\.[0-9]{3}/, '') + "Z";
+  const serviceId = crypto.createHash('sha256').update("access" + datatokenAddress).digest('hex');
+
   const ddo = {
-      "@context": ["https://w3id.org/did/v1"],
-      id: didop,
-      version: "4.1.0",
-      chainId: oceanConfig.chainId,
-      nftAddress: nftAddress,
-      metadata: {
-        created: new Date().toISOString().replace(/\.[0-9]{3}/, '') + "Z",
-        updated: new Date().toISOString().replace(/\.[0-9]{3}/, '') + "Z",
-        type: "dataset",
-        name: "VoidFiller Audit Data",
-        description: "EU AI Act 2026 Audit Data - VoidFiller",
-        author: "VoidFiller Agent",
-        license: "MIT"
-      },
-      services: [
-        {
-          id: crypto.createHash('sha256').update("access"+datatokenAddress).digest('hex'),
-          type: "access",
-          files: encryptedFiles,
-          datatokenAddress: datatokenAddress,
-          serviceEndpoint: oceanConfig.providerUri,
-          timeout: 0
-        }
-      ]
+    "@context": ["https://w3id.org/did/v1"],
+    id: didop,
+    version: "4.1.0",
+    chainId: oceanConfig.chainId,
+    nftAddress: nftAddress,
+    metadata: {
+      created:     now,
+      updated:     now,
+      type:        "dataset",
+      name:        "VoidFiller Audit Data",
+      description: "EU AI Act 2026 Audit Data - VoidFiller",
+      author:      "VoidFiller Agent",
+      license:     "https://spdx.org/licenses/MIT.html"
+    },
+    services: [
+      {
+        id:              serviceId,
+        type:            "access",
+        files:           encryptedFiles,
+        datatokenAddress: datatokenAddress,
+        serviceEndpoint: publicProviderUri,  // ← Public, reachable endpoint (NOT localhost)
+        timeout:         0
+      }
+    ]
   };
 
-  console.log("Validating DDO Services...");
-  if (!ddo.services[0].id || !ddo.services[0].datatokenAddress) {
-      throw new Error("Validation Failed: DDO services missing id or datatokenAddress.");
+  // ---- Validate DDO structure against local node's indexer API ----
+  console.log("\n--- DDO Validation ---");
+  console.log("POSTing DDO to local node validate endpoint...");
+  try {
+    const validateRes = await fetch(`${localNodeUri}/api/aquarius/assets/ddo/validate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(ddo)
+    });
+    const validateBody = await validateRes.text();
+    console.log(`Validate HTTP status: ${validateRes.status}`);
+    console.log(`Validate response: ${validateBody}`);
+    if (validateRes.status !== 200) {
+      console.warn("WARNING: DDO failed local validation. Check above response for details.");
+    }
+  } catch(e) {
+    console.warn("Could not reach local validate endpoint:", e.message);
   }
 
-  console.log("Encrypting DDO...");
+  // ---- Encrypt DDO against local node ----
+  console.log("\nEncrypting DDO via local node...");
   const encryptedDDO = await ProviderInstance.encrypt(ddo, oceanConfig.chainId, localNodeUri, wallet);
-  
-  if(!encryptedDDO || !encryptedDDO.startsWith('0x')){
-      throw new Error("Provider encryption failed or did not return 0x string.");
+  if (!encryptedDDO || !encryptedDDO.startsWith('0x')) {
+    throw new Error("Provider encryption failed or did not return 0x string.");
   }
   console.log("Encryption success!");
-  
-  const ddoString = JSON.stringify(ddo);
-  const ddoHash = "0x" + crypto.createHash('sha256').update(ddoString).digest('hex');
 
-  console.log("Sending setMetadata...");
-  const nft = new Nft(wallet, oceanConfig.network, oceanConfig);
+  // ---- Hash MUST match exactly what Aquarius will expect ----
+  const ddoString = JSON.stringify(ddo);
+  const ddoHash   = "0x" + crypto.createHash('sha256').update(ddoString).digest('hex');
+  console.log("DDO Hash:", ddoHash);
+
+  // ---- setMetaData on chain ----
+  console.log("\nSending setMetadata...");
+  const nft         = new Nft(wallet, oceanConfig.network, oceanConfig);
   const nftContract = nft.getContract(nftAddress);
-  
-  const fallbackGasLimit = process.env.GAS_LIMIT !== undefined && process.env.GAS_LIMIT !== '' && !isNaN(Number(process.env.GAS_LIMIT)) ? process.env.GAS_LIMIT : '3000000';
-  const fallbackMaxFee = process.env.MAX_FEE !== undefined && process.env.MAX_FEE !== '' && !isNaN(Number(process.env.MAX_FEE)) ? process.env.MAX_FEE : '200000000000'; // 200 Gwei
-  const fallbackPrioFee = process.env.PRIO_FEE !== undefined && process.env.PRIO_FEE !== '' && !isNaN(Number(process.env.PRIO_FEE)) ? process.env.PRIO_FEE : '60000000000';  // 60 Gwei
+
+  const gasLimit  = process.env.GAS_LIMIT || '3000000';
+  const maxFee    = process.env.MAX_FEE   || '200000000000';
+  const prioFee   = process.env.PRIO_FEE  || '60000000000';
 
   const txOverrides = {
-      gasLimit: ethers.BigNumber.from(fallbackGasLimit).toString(),
-      maxFeePerGas: ethers.BigNumber.from(fallbackMaxFee).toString(),
-      maxPriorityFeePerGas: ethers.BigNumber.from(fallbackPrioFee).toString()
+    gasLimit:            ethers.BigNumber.from(gasLimit).toString(),
+    maxFeePerGas:        ethers.BigNumber.from(maxFee).toString(),
+    maxPriorityFeePerGas: ethers.BigNumber.from(prioFee).toString()
   };
 
   const metaTxResponse = await nftContract.setMetaData(
-      0, // state: active
-      oceanConfig.providerUri,
-      '0x0000000000000000000000000000000000000000',
-      '0x02', // flags: encrypted
-      encryptedDDO, // data bytes
-      ddoHash, // metadata hash
-      [], // empty proofs
-      txOverrides
+    0,                // state: active
+    publicProviderUri, // provider URL recorded on-chain (NOT localhost)
+    '0x0000000000000000000000000000000000000000',
+    '0x02',           // flags: encrypted
+    encryptedDDO,
+    ddoHash,
+    [],
+    txOverrides
   );
 
   console.log("Tx Sent! Hash:", metaTxResponse.hash || metaTxResponse.transactionHash);
-  let finalMetaTxHash = metaTxResponse.hash || metaTxResponse.transactionHash;
+  const finalMetaTxHash = metaTxResponse.hash || metaTxResponse.transactionHash;
 
-  console.log("Waiting for network confirmation...");
+  console.log("Waiting for on-chain confirmation...");
   const metaReceipt = await provider.waitForTransaction(finalMetaTxHash);
-
   if (metaReceipt.status === 0) {
-      throw new Error("Transaction Reverted: " + finalMetaTxHash);
+    throw new Error("Transaction Reverted: " + finalMetaTxHash);
   }
-
+  console.log("On-chain confirmed! Block:", metaReceipt.blockNumber);
   console.log(`\nMarketURL: https://market.oceanprotocol.com/asset/${didop}`);
-  console.log("\nWaiting for P2P network synchronization (Announcement)...");
-  
-  // Poll the public marketplace Aquarius to ensure the asset is indexed
-  const publicAquariusUrl = `https://v4.aquarius.oceanprotocol.com/api/aquarius/assets/ddo/${didop}`;
-  let indexed = false;
-  const maxRetries = 30; // 5 minutes max
+
+  // ---- Poll local node indexer for indexing proof ----
+  console.log("\nPolling local node indexer for DID indexing...");
+  const localIndexUrl = `${localNodeUri}/api/aquarius/assets/ddo/${didop}`;
+  let indexed   = false;
+  const maxRetries = 30; // up to 5 minutes
   for (let i = 0; i < maxRetries; i++) {
-      try {
-          // Dynamic require for node-fetch if needed, or native fetch in Node 20
-          const res = await fetch(publicAquariusUrl);
-          if (res.status === 200) {
-              console.log("SUCCESS: マーケットでの DID 検出を確認しました。");
-              indexed = true;
-              break;
-          }
-      } catch (err) {
-          // Ignore fetch errors during polling
+    try {
+      const res  = await fetch(localIndexUrl);
+      const body = await res.text();
+      console.log(`[Indexer poll ${i+1}/${maxRetries}] HTTP ${res.status}`);
+      if (res.status === 200) {
+        console.log("SUCCESS: マーケットでの DID 検出を確認しました。");
+        console.log("--- Indexer JSON Response ---");
+        console.log(body);
+        console.log("----------------------------");
+        indexed = true;
+        break;
+      } else {
+        console.log(`Response snippet: ${body.substring(0, 200)}`);
       }
-      console.log(`Waiting for indexer... (${i + 1}/${maxRetries})`);
-      await new Promise(resolve => setTimeout(resolve, 10000));
+    } catch (err) {
+      console.log(`[Poll ${i+1}] Fetch error: ${err.message}`);
+    }
+    await sleep(10000);
   }
 
   if (!indexed) {
-      console.warn("WARNING: The asset was minted, but the indexer did not acknowledge it within 5 minutes. It may take a bit longer to appear.");
+    console.error("FAIL: インデクサーが5分以内に DID を確認しませんでした。さらなる調査が必要です。");
+    process.exit(1);
   }
 }
 main().catch(e => { console.error(e); process.exit(1); });
